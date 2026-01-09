@@ -1,0 +1,15 @@
+[
+  {
+    "url": "https://www.youtube.com/watch?v=x1cybzlxqi0",
+    "platform": "youtube"
+  },
+  {
+    "url": "https://www.youtube.com/watch?v=8G1i0vstvTo", 
+    "platform": "youtube"
+  },
+  {
+    "url": "https://feeds.megaphone.fm/forwardguidance",
+    "platform": "rss",
+    "episode_name": "Threat to Fed Independence is Un-Anchoring Inflation Expectations | Jens Nordvig"
+  }
+]

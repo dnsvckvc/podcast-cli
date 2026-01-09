@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "podcast-cli"
+version = "1.0.0"
+description = "Command-line tool for processing podcast audio with AI transcription and summarization"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+authors = [
+    {name = "Your Name", email = "your.email@example.com"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+dependencies = [
+    "openai>=1.0.0",
+    "python-dotenv>=1.0.0",
+    "requests>=2.28.0",
+    "tqdm>=4.65.0",
+    "yt-dlp>=2024.1.0",
+    "feedparser>=6.0.0",
+    "pydub>=0.25.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+]
+local-whisper = [
+    "openai-whisper>=20231117",
+]
+
+[project.scripts]
+podcast-cli = "podcast_cli.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/yourusername/podcast-cli"
+Issues = "https://github.com/yourusername/podcast-cli/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["podcast_cli*"]
+
+[tool.black]
+line-length = 100
+target-version = ["py39", "py310", "py311"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
