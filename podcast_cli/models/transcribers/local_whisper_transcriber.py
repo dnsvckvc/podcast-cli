@@ -2,7 +2,7 @@ import os
 import logging
 import whisper
 from pathlib import Path
-from models.transcribers.transcriber import Transcriber
+from .transcriber import Transcriber
 
 logger = logging.getLogger(__name__)
 

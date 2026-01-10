@@ -6,8 +6,8 @@ import feedparser
 
 from typing import Tuple, Optional
 from urllib.parse import urlparse
-from models.downloaders.downloader import Downloader
-from models.downloaders.utils.rss_feed_downloader_utils import (
+from .downloader import Downloader
+from .utils.rss_feed_downloader_utils import (
     get_metadata,
     get_episode_entry,
     generate_episode_id,

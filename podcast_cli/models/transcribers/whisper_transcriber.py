@@ -4,7 +4,7 @@ import logging
 
 from openai import OpenAI
 from pydub import AudioSegment
-from models.transcribers.transcriber import Transcriber
+from .transcriber import Transcriber
 
 logger = logging.getLogger(__name__)
 

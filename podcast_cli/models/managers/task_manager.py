@@ -4,11 +4,11 @@ import threading
 from enum import Enum
 from typing import Dict, Optional
 from dataclasses import dataclass, asdict
-from models.downloaders.yt_downloader import YTDownloader
-from models.downloaders.rss_feed_downloader import RSS_Feed_Downloader
-from models.transcribers.salad_transcriber import SaladTranscriber
-from models.transcribers.whisper_transcriber import WhisperTranscriber
-from models.summarizers.openai_summarizer import OpenAI_Summarizer
+from ..downloaders.yt_downloader import YTDownloader
+from ..downloaders.rss_feed_downloader import RSS_Feed_Downloader
+from ..transcribers.salad_transcriber import SaladTranscriber
+from ..transcribers.whisper_transcriber import WhisperTranscriber
+from ..summarizers.openai_summarizer import OpenAI_Summarizer
 
 
 class TaskStatus(Enum):

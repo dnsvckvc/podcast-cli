@@ -6,8 +6,8 @@ import logging
 
 from typing import Tuple, Optional
 from yt_dlp import YoutubeDL
-from models.downloaders.downloader import Downloader
-from models.downloaders.utils.yt_downloader_utils import extract_video_id, load_metadata
+from .downloader import Downloader
+from .utils.yt_downloader_utils import extract_video_id, load_metadata
 
 logger = logging.getLogger(__name__)
 
