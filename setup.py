@@ -13,7 +13,7 @@ setup(
     version="1.0.0",
     author="Your Name",
     author_email="your.email@example.com",
-    description="Command-line tool for processing podcast audio with AI transcription and summarization",
+    description="Command-line tool for transcribing podcast audio via Salad Cloud",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/yourusername/podcast-cli",

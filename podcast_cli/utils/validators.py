@@ -169,35 +169,6 @@ class InputValidator:
     """
 
     @staticmethod
-    def validate_detail_level(detail_level: Any) -> Dict[str, Any]:
-        """
-        Validate detail level parameter.
-
-        Args:
-            detail_level: Detail level value to validate
-
-        Returns:
-            Dict[str, Any]: Validation result
-        """
-        if detail_level is None:
-            return {"valid": True, "value": 0.5}
-
-        try:
-            detail_float = float(detail_level)
-            if 0.0 <= detail_float <= 1.0:
-                return {"valid": True, "value": detail_float}
-            else:
-                return {
-                    "valid": False,
-                    "error": "Detail level must be between 0.0 and 1.0",
-                }
-        except (ValueError, TypeError):
-            return {
-                "valid": False,
-                "error": "Detail level must be a number between 0.0 and 1.0",
-            }
-
-    @staticmethod
     def validate_episode_name(episode_name: Any, platform: str) -> Dict[str, Any]:
         """
         Validate episode name parameter.

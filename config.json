@@ -1,22 +1,4 @@
 {
-  "transcriber": "salad",
-  "max_workers": 10,
-  "whisper": {
-    "verbose": true,
-    "model": "base",
-    "file_ext": ".mp3",
-    "transcription_extension": ".txt",
-    "base_dir": "/tmp",
-    "downloads_dir": "audio",
-    "max_file_size": 26214400
-  },
-  "local_whisper": {
-    "verbose": true,
-    "model": "base",
-    "transcription_extension": ".txt",
-    "base_dir": "/tmp",
-    "downloads_dir": "audio"
-  },
   "salad": {
     "verbose": true,
     "storage_base_url": "https://storage-api.salad.com/organizations",
@@ -25,7 +7,12 @@
     "base_dir": "/tmp",
     "downloads_dir": "audio",
     "transcription_extension": ".txt",
-    "use_lite": true
+    "use_lite": false,
+    "language_code": "en",
+    "diarization": true,
+    "sentence_level_timestamps": true,
+    "poll_interval_s": 10,
+    "max_poll_minutes": 90
   },
   "youtube": {
     "verbose": true,
@@ -40,9 +27,5 @@
     "file_ext": ".mp3",
     "base_dir": "/tmp",
     "downloads_dir": "audio"
-  },
-  "openai": {
-    "verbose": true,
-    "model": "gpt-4o-mini"
   }
 }

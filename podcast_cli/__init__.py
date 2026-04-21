@@ -1,20 +1,16 @@
 """
-Podcast CLI - Command-line tool for podcast processing.
+Podcast CLI - Command-line tool for podcast transcription.
 
-A CLI tool for processing podcast audio from YouTube or RSS feeds
-with AI transcription and summarization.
+A CLI tool for transcribing podcast audio from YouTube or RSS feeds
+via Salad Cloud.
 """
 
 __version__ = "1.0.0"
 
-from .cli_processor import CLIProcessor
-from .remote_processor import RemoteProcessor
 from .hybrid_processor import HybridProcessor
 from .output_manager import OutputManager
 
 __all__ = [
-    "CLIProcessor",
-    "RemoteProcessor",
     "HybridProcessor",
     "OutputManager",
 ]

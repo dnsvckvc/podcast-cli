@@ -18,12 +18,12 @@ class OutputManager:
     │   ├── metadata.json
     │   ├── audio.mp3
     │   ├── transcript.txt
-    │   └── summary.md
+    │   └── transcript.json   (only when Salad full endpoint is used)
     ├── rss_EPISODESLUG/
     │   ├── metadata.json
     │   ├── audio.mp3
     │   ├── transcript.txt
-    │   └── summary.md
+    │   └── transcript.json
     └── .cli_cache/
         └── processing_log.json
     """
@@ -150,83 +150,61 @@ class OutputManager:
                 return match.group(1)
         return None
 
-    def save_episode_files(self, episode_path: Path, audio_path: str, transcript: str, 
-                          summary: str, metadata: Dict[str, Any], 
-                          processing_options: Dict[str, Any]) -> Dict[str, Path]:
+    def save_episode_files(self, episode_path: Path, audio_path: str, transcript: str,
+                          metadata: Dict[str, Any],
+                          processing_options: Dict[str, Any],
+                          structured_transcript_path: Optional[str] = None) -> Dict[str, Path]:
         """
         Save all episode files to the episode directory.
-        
+
         Args:
             episode_path (Path): Episode directory path
             audio_path (str): Path to downloaded audio file
             transcript (str): Transcribed text
-            summary (str): Generated summary
             metadata (Dict[str, Any]): Episode metadata
             processing_options (Dict[str, Any]): Processing configuration used
-            
+            structured_transcript_path (Optional[str]): Path to a structured
+                transcript JSON (sentence/diarization data) produced by the
+                Salad full endpoint, if any. Will be copied next to transcript.txt.
+
         Returns:
             Dict[str, Path]: Paths to saved files
         """
         saved_files = {}
-        
-        # Enhance metadata with processing information
+
         enhanced_metadata = {
             **metadata,
             "processing_timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "cli_version": "1.0.0",
             "processing_options": processing_options
         }
-        
-        # Save metadata
+
         metadata_path = episode_path / "metadata.json"
         with open(metadata_path, 'w') as f:
             json.dump(enhanced_metadata, f, indent=2)
         saved_files["metadata"] = metadata_path
-        
-        # Copy audio file if it exists and is not already in the episode directory
+
         if audio_path and os.path.exists(audio_path):
             audio_dest = episode_path / "audio.mp3"
             if Path(audio_path).resolve() != audio_dest.resolve():
                 shutil.copy2(audio_path, audio_dest)
             saved_files["audio"] = audio_dest
-        
-        # Save transcript
+
         if transcript:
             transcript_path = episode_path / "transcript.txt"
             with open(transcript_path, 'w', encoding='utf-8') as f:
                 f.write(transcript)
             saved_files["transcript"] = transcript_path
-        
-        # Save summary
-        if summary:
-            summary_path = episode_path / "summary.md"
-            with open(summary_path, 'w', encoding='utf-8') as f:
-                self._write_formatted_summary(f, enhanced_metadata, summary)
-            saved_files["summary"] = summary_path
-        
-        # Update processing log
-        self._log_processed_episode(str(episode_path.name), enhanced_metadata)
-        
-        return saved_files
 
-    def _write_formatted_summary(self, file_handle, metadata: Dict[str, Any], summary: str):
-        """Write formatted summary with metadata header."""
-        file_handle.write(f"# {metadata.get('title', 'Unknown Title')}\n\n")
-        
-        if metadata.get('channel'):
-            file_handle.write(f"**Channel:** {metadata['channel']}\n")
-        if metadata.get('duration_string'):
-            file_handle.write(f"**Duration:** {metadata['duration_string']}\n")
-        if metadata.get('release_date'):
-            file_handle.write(f"**Release Date:** {metadata['release_date']}\n")
-        if metadata.get('source_url'):
-            file_handle.write(f"**Source:** {metadata['source_url']}\n")
-        
-        file_handle.write(f"**Processed:** {metadata.get('processing_timestamp', 'Unknown')}\n\n")
-        
-        file_handle.write("## Summary\n\n")
-        file_handle.write(summary)
-        file_handle.write("\n")
+        if structured_transcript_path and os.path.exists(structured_transcript_path):
+            structured_dest = episode_path / "transcript.json"
+            if Path(structured_transcript_path).resolve() != structured_dest.resolve():
+                shutil.copy2(structured_transcript_path, structured_dest)
+            saved_files["transcript_structured"] = structured_dest
+
+        self._log_processed_episode(str(episode_path.name), enhanced_metadata)
+
+        return saved_files
 
     def _log_processed_episode(self, episode_folder: str, metadata: Dict[str, Any]):
         """Log processed episode to processing log."""
@@ -270,7 +248,7 @@ class OutputManager:
                     stored_title = episode_data.get("title", "")
                     if episode_name and stored_title:
                         # Normalize both titles for comparison
-                        from models.downloaders.utils.rss_feed_downloader_utils import _normalize_title
+                        from podcast_cli.models.downloaders.utils.rss_feed_downloader_utils import _normalize_title
                         if _normalize_title(stored_title) == _normalize_title(episode_name):
                             folder_path = self.base_path / folder_name
                             if folder_path.exists():
@@ -280,7 +258,7 @@ class OutputManager:
                     if episode_audio_url:
                         # Try to get the audio URL for the requested episode
                         try:
-                            from models.downloaders.utils.rss_feed_downloader_utils import get_episode_entry
+                            from podcast_cli.models.downloaders.utils.rss_feed_downloader_utils import get_episode_entry
                             entry, _ = get_episode_entry(source_url, episode_name)
                             if entry and hasattr(entry, "enclosures") and entry.enclosures:
                                 for enclosure in entry.enclosures:

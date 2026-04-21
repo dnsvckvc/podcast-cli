@@ -1,29 +1,19 @@
 # Podcast CLI
 
-A command-line tool for processing podcast audio from YouTube or RSS feeds with AI transcription and summarization.
+A command-line tool for transcribing podcast audio from YouTube or RSS feeds via Salad Cloud.
 
 ## Features
 
-- **Three Processing Modes**:
-  - **Local**: Full local processing (download, transcribe, summarize)
-  - **Remote**: Use remote API endpoint
-  - **Hybrid**: Local download + remote transcription
-
+- Local download of YouTube videos and RSS-feed episodes
+- Direct transcription via Salad Cloud (lite or full endpoint)
+- Optional speaker diarization and sentence-level timestamps (full endpoint)
 - Batch processing with parallel workers
-- Progress tracking with tqdm
-- Structured output with metadata
-- Performance reporting
-- Support for YouTube and RSS sources
+- Progress tracking with `tqdm`
+- Structured output with metadata + per-episode performance reports
 
 ## Installation
 
-### From PyPI (when published)
-
-```bash
-pip install podcast-cli
-```
-
-### From Source
+### From source
 
 ```bash
 git clone https://github.com/yourusername/podcast-cli.git
@@ -31,103 +21,80 @@ cd podcast-cli
 pip install -e .
 ```
 
-### With Local Whisper Support
-
-```bash
-pip install -e ".[local-whisper]"
-```
-
 ## Configuration
 
-Create a `.env` file with your API keys:
+Create a `.env` file with your Salad credentials:
 
 ```env
-# Required for summarization
-OPENAI_API_KEY=your_openai_api_key
-
-# Required for Salad transcription (remote/hybrid modes)
 SALAD_API_KEY=your_salad_api_key
 SALAD_ORGANIZATION=your_salad_org
-
-# Required for remote mode
-API_USERNAME=your_api_username
-API_PASSWORD=your_api_password
-API_URL=https://your-api-endpoint.com
 ```
+
+The runtime config lives in `config.json`. The `salad` block selects the
+endpoint and toggles transcription features:
+
+```json
+"salad": {
+  "use_lite": false,
+  "language_code": "en",
+  "diarization": true,
+  "sentence_level_timestamps": true
+}
+```
+
+- `use_lite`: when `true`, uses Salad's `transcription-lite` endpoint
+  (URL + plain text only). When `false` (default), uses the full
+  `transcribe` endpoint and the options below take effect.
+- `language_code`: ISO language code (e.g. `"en"`). Required for
+  diarization to work reliably.
+- `diarization`: when `true`, enables speaker separation. Sentence-level
+  speaker labels are also enabled automatically (Salad requires
+  `sentence_diarization` for that).
+- `sentence_level_timestamps`: keep `true` so the structured
+  `transcript.json` is populated.
 
 ## Usage
 
-### Basic Usage
-
 ```bash
-# Process a YouTube video (local mode)
+# YouTube
 podcast-cli --url "https://youtube.com/watch?v=..." --output ./podcasts
 
-# Process an RSS episode
-podcast-cli --rss "https://feeds.example.com/feed.xml" --episode "Episode Name" --output ./podcasts
-```
+# RSS episode
+podcast-cli --rss "https://feeds.example.com/feed.xml" \
+            --episode "Episode Name" \
+            --output ./podcasts
 
-### Processing Modes
-
-```bash
-# Local processing (default)
-podcast-cli --url "https://youtube.com/watch?v=..." --output ./podcasts
-
-# Remote API processing
-podcast-cli --url "https://youtube.com/watch?v=..." --output ./podcasts --remote
-
-# Hybrid mode (local download + Salad Cloud transcription)
-podcast-cli --url "https://youtube.com/watch?v=..." --output ./podcasts --hybrid
-```
-
-### Batch Processing
-
-```bash
-# Process multiple URLs from a file
-podcast-cli --batch urls.txt --output ./podcasts
-
-# Parallel processing with 4 workers
+# Batch
 podcast-cli --batch urls.txt --output ./podcasts --parallel 4
-```
 
-### Additional Options
-
-```bash
-# Transcription only (skip summarization)
-podcast-cli --url "..." --output ./podcasts --transcribe-only
-
-# Summarization only (existing transcript)
-podcast-cli --url "..." --output ./podcasts --summarize-only
-
-# Custom detail level (0.0-1.0)
-podcast-cli --url "..." --output ./podcasts --detail 0.75
-
-# Verbose mode with performance reporting
-podcast-cli --url "..." --output ./podcasts --verbose
-
-# Force reprocessing of already processed episodes
+# Force reprocess of an already-processed episode
 podcast-cli --url "..." --output ./podcasts --force-reprocess
 
-# Choose specific transcriber
-podcast-cli --url "..." --output ./podcasts --transcriber salad
+# Verbose with per-episode performance report
+podcast-cli --url "..." --output ./podcasts --verbose
 ```
 
-## Output Structure
+## Output structure
+
+When the full Salad endpoint is in use, each episode folder contains:
 
 ```
 ./podcasts/
-├── <podcast_name>/
-│   └── <episode_date>/
-│       ├── metadata.json    # Episode info, processing stats
-│       ├── transcript.txt   # Raw transcript
-│       ├── summary.md       # AI summary
-│       └── README.md        # Episode documentation
-└── processing_stats.json    # Overall stats
+├── youtube_VIDEOID/
+│   ├── metadata.json     # episode info + processing options
+│   ├── audio.mp3
+│   ├── transcript.txt    # plain text (joined sentences)
+│   ├── transcript.json   # structured: sentences, timestamps, speakers
+│   └── performance.json
+└── .cli_cache/
+    └── processing_log.json
 ```
 
-## Batch File Formats
+When `use_lite` is `true`, only `transcript.txt` is produced.
 
-### Simple (one URL per line)
+## Batch file formats
+
+### Plain text (one URL per line)
 ```
 https://youtube.com/watch?v=...
 https://youtube.com/watch?v=...
@@ -136,15 +103,8 @@ https://youtube.com/watch?v=...
 ### JSON
 ```json
 [
-  {
-    "url": "https://youtube.com/watch?v=...",
-    "platform": "youtube"
-  },
-  {
-    "url": "https://feeds.example.com/feed.xml",
-    "platform": "rss",
-    "episode_name": "Episode Title"
-  }
+  {"url": "https://youtube.com/watch?v=...", "platform": "youtube"},
+  {"url": "https://feeds.example.com/feed.xml", "platform": "rss", "episode_name": "Episode Title"}
 ]
 ```
 
@@ -157,13 +117,8 @@ https://feeds.example.com/feed.xml,rss,Episode Name
 ## Development
 
 ```bash
-# Install development dependencies
 pip install -e ".[dev]"
-
-# Run tests
 pytest
-
-# Format code
 black podcast_cli
 isort podcast_cli
 ```

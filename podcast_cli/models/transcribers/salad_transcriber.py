@@ -1,9 +1,11 @@
 import os
+import json
 import time
 import logging
 import requests
 
 from pathlib import Path
+from typing import Any, Dict, Optional, Tuple
 from dotenv import load_dotenv
 from .transcriber import Transcriber
 
@@ -37,6 +39,11 @@ class SaladTranscriber(Transcriber):
         if not SALAD_ORGANIZATION:
             raise ValueError("SALAD_ORGANIZATION environment variable is required")
 
+        # Path to the most recent structured transcript JSON (full endpoint
+        # only). HybridProcessor reads this after transcribe() returns so the
+        # OutputManager can copy it next to transcript.txt.
+        self.last_structured_path: Optional[str] = None
+
     def transcribe(self, audio_path: str, video_id: str) -> str:
         """
         Transcribe audio file or URL using Salad AI.
@@ -46,7 +53,9 @@ class SaladTranscriber(Transcriber):
             video_id (str): Unique identifier for the content
 
         Returns:
-            str: Transcribed text
+            str: Transcribed text (plain text). When the full Salad endpoint is
+            used, a structured JSON payload is also written next to the .txt
+            file and exposed via ``self.last_structured_path``.
         """
         base_dir = os.path.join(self.downloads_path, video_id)
         os.makedirs(base_dir, exist_ok=True)
@@ -54,10 +63,14 @@ class SaladTranscriber(Transcriber):
         transcript_path = os.path.join(
             base_dir, f"{video_id}{self.config.get('transcription_extension')}"
         )
+        structured_path = os.path.join(base_dir, f"{video_id}.json")
+        self.last_structured_path = None
 
         if os.path.exists(transcript_path):
             if self.verbose:
                 logger.info("Transcript already exists, loading from file")
+            if os.path.exists(structured_path):
+                self.last_structured_path = structured_path
             with open(transcript_path, "r", encoding="utf-8") as f:
                 return f.read()
 
@@ -65,14 +78,20 @@ class SaladTranscriber(Transcriber):
             if audio_path.startswith(("http://", "https://")):
                 if self.verbose:
                     logger.info(f"Transcribing from URL: {audio_path}")
-                transcribed_text = self.transcribe_from_url(audio_path)
+                transcribed_text, structured = self.transcribe_from_url(audio_path)
             else:
                 if self.verbose:
                     logger.info(f"Uploading and transcribing file: {audio_path}")
                 transcript_url = self.upload(audio_path)
-                transcribed_text = self.transcribe_from_url(transcript_url)
+                transcribed_text, structured = self.transcribe_from_url(transcript_url)
 
             self.save_transcript(transcribed_text, transcript_path)
+
+            if structured is not None:
+                with open(structured_path, "w", encoding="utf-8") as f:
+                    json.dump(structured, f, indent=2, ensure_ascii=False)
+                self.last_structured_path = structured_path
+
             return transcribed_text
 
         except Exception as e:
@@ -130,7 +149,7 @@ class SaladTranscriber(Transcriber):
                         "mimeType": "audio/mpeg",
                         "sign": "true",
                         "signatureExp": str(
-                            self.config.get("signature_expiration", 259200)
+                            self.config.get("signature_expiration", 14400)
                         ),
                     },
                 )
@@ -217,26 +236,86 @@ class SaladTranscriber(Transcriber):
             logger.error(f"Multipart upload failed: {e}")
             raise Exception(f"Multipart upload failed")
 
-    def transcribe_from_url(self, file_url: str) -> str:
+    def _build_payload(self, file_url: str, use_lite: bool) -> Dict[str, Any]:
         """
-        Submit transcription job and poll for completion.
+        Build the Salad job payload.
 
-        Args:
-            file_url (str): URL of audio file to transcribe
-
-        Returns:
-            str: Transcribed text
+        For the lite endpoint we only send ``url`` + ``return_as_file`` because
+        lite ignores the rest. For the full endpoint we wire through
+        language_code, sentence-level timestamps, and diarization (which
+        requires sentence_diarization per the Salad docs).
         """
-        payload = {
-            "input": {
-                "url": file_url,
-                "return_as_file": False,
-            }
+        salad_input: Dict[str, Any] = {
+            "url": file_url,
+            "return_as_file": False,
         }
 
-        # Choose endpoint based on configuration
-        endpoint = "transcription-lite" if self.config.get("use_lite", True) else "transcribe"
-        
+        if not use_lite:
+            language_code = self.config.get("language_code")
+            if language_code:
+                salad_input["language_code"] = language_code
+
+            # Default sentence-level timestamps to True (matches Salad's own
+            # default and is what the structured output is keyed off of).
+            salad_input["sentence_level_timestamps"] = bool(
+                self.config.get("sentence_level_timestamps", True)
+            )
+
+            diarization = bool(self.config.get("diarization", False))
+            if diarization:
+                salad_input["diarization"] = True
+                # Per Salad docs, sentence-level speaker labels require
+                # sentence_diarization to be explicitly enabled.
+                salad_input["sentence_diarization"] = True
+
+        return {"input": salad_input}
+
+    def _fetch_remote_output(self, output_url: str) -> Dict[str, Any]:
+        """Fetch the >1MB Salad result file referenced by ``output.url``."""
+        if self.verbose:
+            logger.info(f"Fetching large Salad result file: {output_url}")
+        resp = requests.get(
+            output_url, headers={"Salad-Api-Key": SALAD_API_KEY}, timeout=120
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def _parse_full_output(self, output: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
+        """
+        Parse the full Salad endpoint output into (plain_text, structured_dict).
+
+        The plain text is composed by joining the ``text`` of each
+        sentence-level timestamp entry. The structured dict is what gets
+        written to ``transcript.json`` next to ``transcript.txt``.
+        """
+        sentences = output.get("sentence_level_timestamps") or []
+
+        plain_text_parts = []
+        for sentence in sentences:
+            text = (sentence.get("text") or "").strip()
+            if text:
+                plain_text_parts.append(text)
+        plain_text = " ".join(plain_text_parts)
+
+        structured = {
+            "sentences": sentences,
+            "duration": output.get("duration"),
+            "processing_time": output.get("processing_time"),
+        }
+        return plain_text, structured
+
+    def transcribe_from_url(self, file_url: str) -> Tuple[str, Optional[Dict[str, Any]]]:
+        """
+        Submit a transcription job, poll for completion, and return the result.
+
+        Returns:
+            Tuple of (plain_text, structured_payload). ``structured_payload`` is
+            ``None`` for the lite endpoint and a dict for the full endpoint.
+        """
+        use_lite = bool(self.config.get("use_lite", False))
+        endpoint = "transcription-lite" if use_lite else "transcribe"
+        payload = self._build_payload(file_url, use_lite)
+
         try:
             response = requests.post(
                 f"{self.config.get('transcript_base_url')}/{SALAD_ORGANIZATION}/inference-endpoints/{endpoint}/jobs",
@@ -250,10 +329,17 @@ class SaladTranscriber(Transcriber):
             job_id = response.json()["id"]
 
             if self.verbose:
-                logger.info(f"Transcription job submitted: {job_id}")
+                logger.info(
+                    f"Transcription job submitted to '{endpoint}': {job_id}"
+                )
 
-            # Poll for completion
-            max_attempts = 120  # 14 minutes max (120 * 7 seconds)
+            # Poll for completion. Defaults: 7s interval, 90 minute window —
+            # generous enough for a 2.5h episode (Salad's hard upper bound)
+            # transcribed with diarization on the full endpoint. Both knobs
+            # are tunable via config.json under the "salad" block.
+            poll_interval_s = int(self.config.get("poll_interval_s", 7))
+            max_poll_minutes = int(self.config.get("max_poll_minutes", 90))
+            max_attempts = max(1, (max_poll_minutes * 60) // poll_interval_s)
             attempt = 0
 
             while attempt < max_attempts:
@@ -269,39 +355,56 @@ class SaladTranscriber(Transcriber):
 
                     if status in ("created", "pending", "started", "running"):
                         if self.verbose:
-                            logger.info(f"Job {job_id} status: {status}, waiting...")
-                        time.sleep(7)
+                            elapsed_min = (attempt * poll_interval_s) / 60
+                            logger.info(
+                                f"Job {job_id} status: {status} "
+                                f"(elapsed {elapsed_min:.1f}m / {max_poll_minutes}m), waiting..."
+                            )
+                        time.sleep(poll_interval_s)
                         attempt += 1
                         continue
-                    elif status == "succeeded":
-                        if job_status.get("output", {}).get("error"):
-                            logger.error(
-                                "Transcription failed: " + job_status["output"]["error"]
-                            )
-                            raise ValueError(
-                                "Transcription error: " + job_status["output"]["error"]
-                            )
-                        return job_status.get("output", {}).get("text", "")
-                    else:
+
+                    if status != "succeeded":
                         error_msg = job_status.get(
                             "error", f"Job failed with status: {status}"
                         )
                         raise Exception(f"Transcription job failed: {error_msg}")
 
+                    output = job_status.get("output", {}) or {}
+                    if output.get("error"):
+                        logger.error("Transcription failed: " + output["error"])
+                        raise ValueError("Transcription error: " + output["error"])
+
+                    # Salad returns a downloadable file URL when the inline
+                    # response would exceed 1MB; fetch and replace `output`.
+                    if output.get("url") and not output.get("text") \
+                            and not output.get("sentence_level_timestamps"):
+                        output = self._fetch_remote_output(output["url"])
+
+                    if use_lite:
+                        return output.get("text", ""), None
+
+                    return self._parse_full_output(output)
+
                 except requests.RequestException as e:
                     logger.warning(f"Status check failed (attempt {attempt}): {e}")
                     if attempt >= max_attempts - 1:
                         raise
-                    time.sleep(7)
+                    time.sleep(poll_interval_s)
                     attempt += 1
 
-            raise Exception("Transcription job timed out")
+            raise Exception(
+                f"Transcription job timed out after {max_poll_minutes} minutes "
+                f"(job_id={job_id}). The job may still be running on Salad — "
+                f"increase salad.max_poll_minutes in config.json and retry, "
+                f"or query the job directly via the Salad API."
+            )
 
         except requests.RequestException as e:
             logger.error(f"Transcription request failed: {e}")
             raise Exception(f"Transcription request failed")
 
-    def _sign_file(self, fname: str, expires_s: int = 3600) -> str:
+    def _sign_file(self, fname: str, expires_s: int = 14400) -> str:
         """
         Sign a file URL for access.
 
